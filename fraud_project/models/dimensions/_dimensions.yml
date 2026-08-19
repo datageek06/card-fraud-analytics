@@ -1,0 +1,135 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: >
+      One row per card. Aggregates lifetime activity and fraud history from
+      stg_transactions. 998 cards in this dataset - small enough that card-level
+      results should be read with that in mind.
+    columns:
+      - name: cc_num
+        description: "Card number, the primary key."
+        tests:
+          - unique
+          - not_null
+      - name: cc_hash
+        description: "SHA-256 of the card number."
+      - name: gender
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['M', 'F']
+      - name: first_purchase
+        description: "Timestamp of the card's first transaction."
+      - name: last_purchase
+        description: "Timestamp of the card's most recent transaction."
+      - name: cnt_transactions
+        description: "Lifetime transaction count."
+        tests:
+          - not_null
+      - name: has_fraud_ever
+        description: "True if the card has at least one fraudulent transaction."
+        tests:
+          - not_null
+      - name: fraud_cnt
+        description: "Lifetime count of fraudulent transactions."
+      - name: fraud_amount
+        description: "Lifetime dollar amount of fraudulent transactions."
+
+  - name: dim_merchants
+    description: >
+      One row per merchant, with lifetime volume and fraud history. Category is taken
+      as MIN(category) because a merchant maps to a single category in this dataset -
+      the uniqueness test below is what guarantees that assumption keeps holding.
+    columns:
+      - name: merchant
+        description: "Merchant name, the primary key."
+        tests:
+          - unique
+          - not_null
+      - name: category
+        description: "Spend category of the merchant."
+        tests:
+          - not_null
+      - name: cnt_transactions
+        description: "Lifetime transaction count. Used to gate low-volume merchants."
+        tests:
+          - not_null
+      - name: avg_fraud_amount
+        description: "Mean amount of the merchant's fraudulent transactions. NULL if none."
+
+  - name: dim_category
+    description: >
+      Spend-category dimension, one row per category. Exists so that the category-keyed
+      marts (mart_segment_kpi, mart_merchant_risk, dim_merchants) can be filtered by one
+      shared slicer - without it a BI tool has no way to relate them. Also carries the
+      channel split as a real attribute instead of leaving every consumer to re-derive it
+      from the category name suffix.
+    columns:
+      - name: category
+        description: "Spend category, the primary key."
+        tests:
+          - unique
+          - not_null
+      - name: category_label
+        description: >
+          Display name, title-cased, with the _net / _pos suffix rendered as
+          "(Online)" / "(In-person)" rather than dropped - shopping, misc and grocery each
+          exist in both variants with sharply different fraud rates, so a stripped label
+          would merge them in any chart grouped on it.
+        tests:
+          - not_null
+          - unique
+      - name: channel
+        description: >
+          Online / In-person / Unknown, derived from the _net and _pos suffix. Unknown for
+          categories that carry neither, where the channel genuinely is not recorded.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Online', 'In-person', 'Unknown']
+      - name: fraud_rate
+        description: "Lifetime fraud rate for the category, as a 0-1 ratio."
+
+  - name: dim_date
+    description: >
+      Calendar dimension, one row per day. The date range is derived from the min/max
+      transaction date in staging rather than hardcoded, so it cannot drift out of sync
+      with the facts. Mark this as the date table in any BI tool.
+    columns:
+      - name: date
+        description: "Calendar date, the primary key."
+        tests:
+          - unique
+          - not_null
+      - name: day_of_week
+        description: >
+          ISO convention - 1=Monday .. 7=Sunday. Different from
+          fact_transactions.day_of_week (Postgres DOW, 0=Sunday); use day_of_week_pg
+          to relate the two.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7]
+                quote: false
+      - name: day_of_week_pg
+        description: "Postgres DOW - 0=Sunday .. 6=Saturday. Matches fact_transactions.day_of_week."
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6]
+                quote: false
+      - name: day_name
+        description: "Weekday name, matches fact_transactions.day_name."
+        tests:
+          - not_null
+      - name: month_start
+        description: "First day of the month as a real date - join key for the monthly marts."
+        tests:
+          - not_null
+      - name: year_month
+        description: "Month as 'YYYY-MM' text, for labels."
+      - name: is_weekend
+        tests:
+          - not_null

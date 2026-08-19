@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: fact_transactions
+    description: >
+      Transaction fact table - one row per transaction, at the same grain as
+      stg_transactions. Adds hour/day-of-week, Haversine distance between customer
+      and merchant, and amount bands. This is the table the marts aggregate from.
+    columns:
+      - name: trans_num
+        description: "Transaction id, the primary key of this table."
+        tests:
+          - unique
+          - not_null
+
+      - name: cc_num
+        description: "Card number, foreign key to dim_customers."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: cc_num
+
+      - name: merchant
+        description: "Merchant name, foreign key to dim_merchants."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_merchants')
+                field: merchant
+
+      - name: trans_date
+        description: "Date of the transaction, foreign key to dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date
+
+      - name: hour
+        description: "Hour of day, 0-23. Fraud peaks at 22-03 (up to 4.7x baseline)."
+        tests:
+          - not_null
+
+      - name: day_of_week
+        description: >
+          Postgres DOW convention - 0=Sunday .. 6=Saturday. NOT the same encoding as
+          dim_date.day_of_week, which is ISO (1=Monday .. 7=Sunday); join to
+          dim_date.day_of_week_pg instead. Frozen because it is a model feature.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6]
+                quote: false
+
+      - name: day_name
+        description: "Weekday name. Use this in BI rather than the numeric column."
+        tests:
+          - not_null
+
+      - name: is_weekend
+        description: "True for Saturday and Sunday."
+        tests:
+          - not_null
+
+      - name: distance_km
+        description: >
+          Haversine distance in km between customer home and merchant. Shown by both
+          EDA (chi-square p = 0.63) and SHAP to have no relationship with fraud.
+
+      - name: amt
+        description: "Transaction amount in dollars."
+        tests:
+          - not_null
+
+      - name: amt_bucket
+        description: "Amount band used in EDA and the segment marts."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Under 10', '10-50', '50-200', '200-1000', '1000-2500', '2500-5000', '5000-10000', '10000+']
+
+      - name: is_fraud
+        description: "Target flag."
+        tests:
+          - not_null
+
+      - name: split_period
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['train', 'valid', 'test']

@@ -1,0 +1,60 @@
+# ---- data (1.4 GB total, way over GitHub's 100 MB/file limit) ----
+# raw + intermediate + model-ready splits. Regenerated via docker compose + dbt run
+# + notebooks/preprocessing.ipynb - documented in README.
+data/
+data.csv
+*.parquet
+*.csv
+!fraud_project/seeds/*.csv
+
+# ---- python ----
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+
+# ---- notebook / training side effects ----
+notebooks/catboost_info/
+notebooks/lightgbm_info/
+*.log
+
+# ---- dbt ----
+fraud_project/target/
+fraud_project/dbt_packages/
+fraud_project/logs/
+logs/
+# profiles.yml holds the postgres password - keep it local
+profiles.yml
+.dbt/
+
+# ---- IDE / editor ----
+# .idea/dataSources.local.xml stores DB credentials
+.idea/
+.vscode/
+
+# ---- secrets ----
+.env
+*.env
+!.env.example
+
+# ---- OS ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- Power BI ----
+# .pbix embeds a full data snapshot -> hundreds of MB. Export the report to
+# .pbit (template, no data) or commit screenshots instead.
+*.pbix
+~$*.pbix
+
+# ---- model artifacts ----
+# NOT ignored on purpose: the final model is a 1-tree LightGBM (a few KB) and it
+# is the deliverable of modeling.ipynb, so models/ is committed.
+
+# ---- Power BI inputs exported from notebooks (small, keep them) ----
+!powerbi/
+!powerbi/data/
+!powerbi/data/*.csv

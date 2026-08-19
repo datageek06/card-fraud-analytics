@@ -1,0 +1,33 @@
+name: 'fraud_project'
+version: '1.0.0'
+profile: 'fraud_project'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  fraud_project:
+    # staging -> core (dims + facts) -> marts.
+    # Everything is materialized as a table rather than a view: the source is 1.8M
+    # rows and the marts get read repeatedly by notebooks and BI, so paying the
+    # build cost once beats re-running the aggregations on every query.
+    staging:
+      +materialized: table
+      +schema: staging
+    dimensions:
+      +materialized: table
+      +schema: core
+    facts:
+      +materialized: table
+      +schema: core
+    marts:
+      +materialized: table
+      +schema: marts

@@ -1,0 +1,279 @@
+version: 2
+
+models:
+
+  - name: mart_daily_kpi
+    description: >
+      Daily fraud and volume KPIs, one row per calendar day. Driven off dim_date with a
+      LEFT JOIN so zero-transaction days still produce a row rather than a gap in the
+      time series. Primary source for the overview page of any dashboard.
+    columns:
+      - name: date
+        description: "Calendar date, the primary key."
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date
+      - name: cnt_transactions
+        description: "Transactions on that day. 0 for days with no activity."
+        tests:
+          - not_null
+      - name: total_amount
+        description: "Total dollar volume on that day."
+        tests:
+          - not_null
+      - name: cnt_fraud
+        description: "Fraudulent transactions on that day."
+        tests:
+          - not_null
+      - name: fraud_amount
+        description: "Fraudulent dollar volume on that day."
+        tests:
+          - not_null
+      - name: fraud_percentage
+        description: >
+          Fraud rate as a 0-1 ratio, not a percentage - the name is kept for
+          compatibility with notebooks/eda.ipynb. NULL on days with no transactions.
+          Never average this across days in a BI tool; re-derive it from
+          SUM(cnt_fraud) / SUM(cnt_transactions) at the displayed grain.
+      - name: fraud_share
+        description: "Share of the day's dollars that were fraudulent, in basis points."
+
+  - name: mart_hourly_kpi
+    description: >
+      Fraud rate by hour of day and day of week, with lift against the overall baseline
+      rate. One row per day_of_week x hour (168 rows). Shows the strongest time pattern in
+      the data: 22:00-03:00 averages 3.7x the baseline fraud rate and peaks at 6.7x, while
+      04:00-11:00 averages 0.26x.
+    columns:
+      - name: day_of_week
+        description: "Postgres DOW - 0=Sunday .. 6=Saturday, matching fact_transactions."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6]
+                quote: false
+      - name: day_name
+        description: "Weekday name. Prefer this over the numeric column in charts."
+        tests:
+          - not_null
+      - name: hour
+        description: "Hour of day, 0-23."
+        tests:
+          - not_null
+      - name: cnt_transactions
+        tests:
+          - not_null
+      - name: fraud_rate_pct
+        description: "Fraud rate for this cell, as a percentage (0-100)."
+      - name: lift_vs_baseline
+        description: "Cell fraud rate divided by the overall baseline rate. 1.0 means average."
+      - name: has_enough_volume
+        description: >
+          True when the cell has at least 100 transactions. Filter on this before ranking
+          on fraud_rate_pct - thin cells produce meaningless extremes.
+        tests:
+          - not_null
+
+  - name: mart_segment_kpi
+    description: >
+      Monthly fraud KPIs by customer segment and spend category. Grain is
+      month x gender x age_bucket x category. Source for the segment page of a dashboard.
+    columns:
+      - name: month
+        description: "Month as YYYY-MM text, for labels."
+        tests:
+          - not_null
+      - name: month_start
+        description: "First day of the month as a real date. Join key to dim_date.month_start."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: month_start
+      - name: gender
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['M', 'F']
+      - name: age_bucket
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['18-29', '30-44', '45-59', '60+']
+      - name: category
+        description: "Spend category. Relate to dim_category for a shared slicer."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category
+      - name: cnt_transactions
+        tests:
+          - not_null
+      - name: fraud_share
+        description: >
+          Fraud rate as a 0-1 ratio for this segment-month. Do not average it across rows -
+          re-derive from cnt_fraud / cnt_transactions at the grain being displayed.
+
+  - name: mart_merchant_risk
+    description: >
+      Merchant-level risk scoring, one row per merchant. Adds an expected-loss figure that
+      combines frequency with severity, plus a volume gate so low-traffic merchants do not
+      dominate a fraud-rate ranking on the strength of one incident.
+    columns:
+      - name: merchant
+        description: "Merchant name, the primary key."
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_merchants')
+                field: merchant
+      - name: category
+        description: "Spend category. Relate to dim_category for a shared slicer."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category
+      - name: fraud_rate
+        description: "Fraudulent share of the merchant's transactions, as a 0-1 ratio."
+      - name: expected_loss_per_1000
+        description: "Expected fraud dollars per 1000 transactions: fraud_rate x avg_fraud_amount x 1000."
+      - name: has_enough_volume
+        description: "True at 200+ transactions. Apply this filter before ranking on fraud_rate."
+        tests:
+          - not_null
+
+  - name: mart_card_profile
+    description: >
+      One row per card: the customer dimension plus activity metrics and a panel showing
+      spend after the card's first fraud, which separates cards that keep being used
+      normally from those that go quiet.
+    columns:
+      - name: cc_num
+        description: "Card number, the primary key."
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: cc_num
+      - name: active_days
+        description: "Distinct days on which the card transacted."
+      - name: avg_txn_per_month
+        description: "Transactions per month, averaged over the months the card was seen."
+      - name: first_fraud_date
+        description: "Timestamp of the card's first fraudulent transaction. NULL if never defrauded."
+      - name: fraud_amount_after_first
+        description: "Fraudulent dollars after the first fraud. NULL if never defrauded."
+      - name: valid_amount_after_first
+        description: "Legitimate dollars after the first fraud. NULL if never defrauded."
+
+  - name: mart_card_velocity
+    description: >
+      Point-in-time-safe behavioural features, one row per transaction. Every window looks
+      strictly backwards (ends 1 second before the current row), so nothing here leaks
+      future information into a model. ratio_to_30d_avg produced here is the single
+      strongest hand-built signal in the project - the 5x rule alone scores 74.7% ROC-AUC.
+
+      Performance note - cnt_distinct_merchants_24h uses a correlated subquery evaluated
+      per row, which makes this the slowest model in the project by a wide margin. It is
+      left as-is because its output feeds the trained model, and changing the computation
+      would silently change feature values.
+    columns:
+      - name: trans_num
+        description: "Transaction id, the primary key."
+        tests:
+          - unique
+          - not_null
+      - name: cc_num
+        tests:
+          - not_null
+      - name: ts
+        tests:
+          - not_null
+      - name: sec_since_last_txn
+        description: "Seconds since the card's previous transaction. NULL on the first ever."
+      - name: is_first_txn
+        description: >
+          True on a card's first ever transaction. These rows have no 30-day history, so
+          ratio_to_30d_avg is NULL for them - EDA found this group has the highest fraud
+          rate in the dataset (11.4%), so the NULL is itself informative.
+        tests:
+          - not_null
+      - name: ratio_to_30d_avg
+        description: >
+          Transaction amount divided by the card's own trailing 30-day average.
+          NULL on a card's first transaction. Strongest single hand-built signal.
+      - name: cnt_distinct_merchants_24h
+        description: "Distinct merchants used by the card in the preceding 24 hours."
+
+  - name: mart_fraud_sessions
+    description: >
+      Fraud grouped into bursts. Consecutive fraudulent transactions on the same card are
+      collapsed into one session whenever the gap between them is under 24 hours, which
+      turns individual fraud rows into the attack episodes they actually belong to.
+      Grain - one row per cc_num x session_no.
+    columns:
+      - name: cc_num
+        tests:
+          - not_null
+      - name: session_no
+        description: "Sequential session number within the card, starting at 1."
+        tests:
+          - not_null
+      - name: txn_in_session
+        description: "Fraudulent transactions in the session."
+        tests:
+          - not_null
+      - name: session_start
+        tests:
+          - not_null
+      - name: duration_min
+        description: "Session length in minutes. 0 for single-transaction sessions."
+      - name: session_amount
+        description: "Total fraudulent dollars in the session."
+      - name: merchant_cnt
+        description: "Distinct merchants hit during the session."
+
+  - name: mart_transactions_enriched
+    description: >
+      One row per transaction - fact_transactions joined to the point-in-time-safe
+      behavioural features from mart_card_velocity. This is the table the Python side reads,
+      notebooks/preprocessing.ipynb pulls from here to build the train/valid/test parquet
+      files. 2.77M rows, so do not import it into a BI tool, use the aggregate marts instead.
+    columns:
+      - name: trans_num
+        description: "Transaction id, the primary key."
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fact_transactions')
+                field: trans_num
+      - name: cc_num
+        tests:
+          - not_null
+      - name: is_fraud
+        description: "Target column for the model."
+        tests:
+          - not_null
+      - name: split_period
+        description: "Chronological train/valid/test label, carried through from staging."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['train', 'valid', 'test']

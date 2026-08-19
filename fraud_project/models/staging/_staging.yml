@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: stg_transactions
+    description: >
+      Cleaned and typed transactions - the single entry point for every model downstream.
+      Timestamp is built from trans_date + trans_time (not unix_time). Merchant names have
+      the 'fraud_' prefix stripped, and card numbers are carried both as a plain id and as
+      a SHA-256 hash.
+    columns:
+      - name: trans_num
+        description: "Transaction id, unique across the whole dataset."
+        tests:
+          - unique
+          - not_null
+
+      - name: cc_num
+        description: "Card number as text. 998 distinct cards in this dataset."
+        tests:
+          - not_null
+
+      - name: cc_hash
+        description: "SHA-256 of cc_num, for anything that should not carry the raw number."
+        tests:
+          - not_null
+
+      - name: ts
+        description: "Transaction timestamp, built from trans_date + trans_time."
+        tests:
+          - not_null
+
+      - name: trans_date
+        description: "Date part of ts, used as the join key to dim_date."
+        tests:
+          - not_null
+
+      - name: merchant
+        description: "Merchant name with the 'fraud_' prefix removed."
+        tests:
+          - not_null
+
+      - name: category
+        description: "Spend category. Strongest single feature in the model, per SHAP."
+        tests:
+          - not_null
+
+      - name: is_online
+        description: >
+          Channel inferred from the category suffix: true for '_net', false for '_pos'.
+          NULL by design for categories with neither suffix (entertainment, food_dining,
+          health_fitness, home, kids_pets, personal_care, travel) - the channel is unknown
+          there, so it is deliberately not defaulted. Not tested for not_null on purpose.
+
+      - name: amt
+        description: "Transaction amount in dollars."
+        tests:
+          - not_null
+
+      - name: is_fraud
+        description: "Target. True for fraud. Roughly 0.5% of rows."
+        tests:
+          - not_null
+
+      - name: age_at_txn
+        description: "Customer age in whole years at the time of the transaction."
+
+      - name: age_bucket
+        description: "Age band used across the marts and the EDA."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['18-29', '30-44', '45-59', '60+']
+
+      - name: gender
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['M', 'F']
+
+      - name: split_period
+        description: >
+          Chronological train/valid/test label. train <= 2020-12-31, valid <= 2021-06-30,
+          test after that. Time-based rather than random, so no future data leaks into train.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['train', 'valid', 'test']
