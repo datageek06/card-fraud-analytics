@@ -1,4 +1,3 @@
--- Проверяет размножение или потерю строк между стейджингом и таблицей фактов
 WITH stg AS (
     SELECT COUNT(1) AS stg_count 
     FROM {{ ref('stg_transactions') }}
