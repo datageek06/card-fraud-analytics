@@ -38,13 +38,8 @@ group by cc_num, session_no
 order by cc_num, session_no;
 
 -- INSIGHT:
--- Fraud rarely happens as an isolated single transaction. Grouping fraudulent
--- transactions per card with a 24h gap threshold shows they cluster into short
--- "sessions" of multiple purchases (often several in a few hours, sometimes
--- spanning 1-2 days), frequently touching multiple merchants. This is the core
--- reason per-transaction scoring is weaker than session/velocity-based
--- detection: once a card is compromised it tends to get hit repeatedly in a
--- tight window, not just once.;
+-- Fraud happens in rapid clusters across multiple merchants rather than single isolated events. 
+-- Scammers hit a compromised card repeatedly within a short window.
 
 
 
@@ -62,7 +57,6 @@ WITH fraud_gaps AS (
 threshold_tests AS (
     SELECT
         hours_since_prev_fraud,
-        -- Размечаем границы серий для каждого тестируемого порога
         CASE WHEN hours_since_prev_fraud IS NULL OR hours_since_prev_fraud > 1 THEN 1 ELSE 0 END AS flag_1h,
         CASE WHEN hours_since_prev_fraud IS NULL OR hours_since_prev_fraud > 6 THEN 1 ELSE 0 END AS flag_6h,
         CASE WHEN hours_since_prev_fraud IS NULL OR hours_since_prev_fraud > 12 THEN 1 ELSE 0 END AS flag_12h,
@@ -71,14 +65,14 @@ threshold_tests AS (
         CASE WHEN hours_since_prev_fraud IS NULL OR hours_since_prev_fraud > 168 THEN 1 ELSE 0 END AS flag_168h
     FROM fraud_gaps
 )
-SELECT '1 час' AS threshold, SUM(flag_1h) AS total_series_count FROM threshold_tests
+SELECT '1 hour' AS threshold, SUM(flag_1h) AS total_series_count FROM threshold_tests
 UNION ALL
-SELECT '6 часов', SUM(flag_6h) FROM threshold_tests
+SELECT '6 hours', SUM(flag_6h) FROM threshold_tests
 UNION ALL
-SELECT '12 часов', SUM(flag_12h) FROM threshold_tests
+SELECT '12 hours', SUM(flag_12h) FROM threshold_tests
 UNION ALL
-SELECT '24 часа', SUM(flag_24h) FROM threshold_tests
+SELECT '24 hours', SUM(flag_24h) FROM threshold_tests
 UNION ALL
-SELECT '48 часов', SUM(flag_48h) FROM threshold_tests
+SELECT '48 hours', SUM(flag_48h) FROM threshold_tests
 UNION ALL
-SELECT '168 часов (1 неделя)', SUM(flag_168h) FROM threshold_tests;
+SELECT '168 hours (1 week)', SUM(flag_168h) FROM threshold_tests;

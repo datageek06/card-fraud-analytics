@@ -1,6 +1,3 @@
--- One row per card: the customer dimension plus activity metrics and a small
--- "what happened after this card's first fraud" panel.
-
 WITH general_metrics AS (
     SELECT
         cc_num,
@@ -20,9 +17,6 @@ first_fraud AS (
     GROUP BY cc_num
 ),
 
--- everything that happened strictly after the card's first fraud, split into
--- fraudulent and legitimate spend - shows whether a compromised card keeps
--- being used normally afterwards or goes quiet
 after_first_fraud AS (
     SELECT
         f.cc_num,

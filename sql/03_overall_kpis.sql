@@ -17,7 +17,6 @@ select
     ) as avg_fraud_amount,
 
 
-    -- 4. Во сколько раз средний чек мошенников выше чека честных клиентов
     round(
         (sum(fraud_amount)::numeric / sum(cnt_fraud))
             /
@@ -29,9 +28,5 @@ select
 from public_marts.mart_daily_kpi;
 
 -- INSIGHT:
--- Fraud is 0.35% of transactions by count but 2.60% of dollar volume --
--- the average fraudulent transaction is $529.62 vs $69.27 for a legitimate
--- one (7.65x higher). This is the headline number for the whole project:
--- fraud is rare by count but disproportionately expensive by amount, so a
--- detection strategy should weight $ impact, not just catch-rate on raw
--- transaction counts.
+-- Fraud accounts for only 0.35% of transactions but 2.60% of total dollar volume, 
+-- with the average fraud transaction being 7.65x higher ($529 vs. $69).

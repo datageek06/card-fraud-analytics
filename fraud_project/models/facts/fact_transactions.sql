@@ -7,25 +7,12 @@
     ]
 )}}
 
--- One row per transaction. Adds derived time, distance and amount-band columns
--- on top of stg_transactions; no filtering or aggregation beyond dropping NULL ids.
-
 SELECT
     trans_num,
     cc_num,
     ts,
     EXTRACT(HOUR from ts) as hour,
-
-    -- NOTE ON ENCODING: this is Postgres DOW, so 0=Sunday .. 6=Saturday.
-    -- dim_date.day_of_week uses ISODOW instead (1=Monday .. 7=Sunday) - the two
-    -- are deliberately different and must not be joined to each other. Join on
-    -- dim_date.day_of_week_pg, which carries this same DOW convention.
-    -- This column is a model feature (see data/processed/features.json), so its
-    -- encoding is frozen: changing it would invalidate the saved model artifact.
     EXTRACT(DOW from ts) as day_of_week,
-
-    -- unambiguous label for BI - identical text in dim_date, so charts never
-    -- have to show a bare number whose convention the reader has to guess
     TRIM(TO_CHAR(ts, 'Day')) as day_name,
     (EXTRACT(ISODOW from ts) IN (6, 7)) as is_weekend,
 
@@ -46,9 +33,7 @@ SELECT
     merch_lat,
     merch_long,
 
-    -- great-circle distance between customer home and merchant (Haversine, km).
-    -- EDA found no relationship with fraud (chi-square p = 0.63) and SHAP agrees
-    -- it barely moves the model - kept because that negative result is a finding.
+    -- Haversine formula to find distance between two coordinates. Thanks to AI.
     ROUND(6371 * 2 * ASIN(SQRT(
         POWER(SIN(RADIANS(merch_lat - cust_lat) / 2), 2) +
         COS(RADIANS(cust_lat)) * COS(RADIANS(merch_lat)) *

@@ -26,9 +26,4 @@ WHERE c.cnt_transactions >= 100
 ORDER BY day_of_week, hour;
 
 -- INSIGHT:
--- Fraud has a strong time-of-day pattern. Hours 22-23 and 0-3 show fraud
--- rates of ~0.7%-1.6% (lift 2x-4.7x vs the overall baseline), while hours
--- 4-11 are consistently near-zero (lift 0.1x-0.4x). Late night / early
--- morning transactions are 4-10x riskier than the daytime baseline -- a
--- strong, cheap real-time signal (hour-of-day alone) that's available even
--- before any per-card history exists.
+-- Fraud spikes late at night and early in the morning (10 PM to 3 AM), making these transactions 4–10x riskier than daytime ones.

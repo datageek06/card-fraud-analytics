@@ -6,11 +6,6 @@
     ]
 ) }}
 
--- One row per transaction, ready to pull into Python for EDA.
--- Joins fact_transactions with mart_card_velocity's point-in-time-safe
--- behavioral features (each window looks only at transactions strictly
--- before ts, so nothing here uses information from the future).
-
 select
     f.trans_num,
     f.cc_num,
